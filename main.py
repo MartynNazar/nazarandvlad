@@ -1,20 +1,49 @@
-import pygame  # Двигун для меню
-import turtle  # Графіка для бою
-import time  # Робота з часом
-import sys  # Повне закриття програми
+import pygame
+import turtle
+import time
+import sys
+import os
+import random  # Додано для випадкових мап
 
-# Глобальні налаштування гри
+# Глобальні налаштування
 settings = {"destructible_walls": False}
+BACKGROUND_IMAGE = "tanks.gif"
+SHOOT_SOUND = "shoot.wav"
+EXPLOSION_SOUND = "explosion.wav"
+VICTORY_SOUND = "victory.wav"
+
+# --- Ініціалізація звуку ---
+pygame.mixer.init()
 
 
-def start_game_process(num_players):  # Головна функція гри
+def load_sound(file):
+    try:
+        return pygame.mixer.Sound(file)
+    except:
+        return None
+
+
+shoot_fx = load_sound(SHOOT_SOUND)
+explosion_fx = load_sound(EXPLOSION_SOUND)
+victory_fx = load_sound(VICTORY_SOUND)
+
+
+def start_game_process(num_players):
     try:
         pygame.display.quit()
         turtle.TurtleScreen._RUNNING = True
         window = turtle.Screen()
         window.clear()
         window.title("Танки 2026")
-        window.bgcolor("black")
+
+        if os.path.exists(BACKGROUND_IMAGE):
+            try:
+                window.bgpic(BACKGROUND_IMAGE)
+            except:
+                window.bgcolor("black")
+        else:
+            window.bgcolor("black")
+
         window.setup(width=900, height=700)
         window.tracer(0)
     except:
@@ -25,17 +54,17 @@ def start_game_process(num_players):  # Головна функція гри
             window.bye()
         except:
             pass
-        pygame.quit();
+        pygame.quit()
         sys.exit()
 
     window.getcanvas().winfo_toplevel().protocol("WM_DELETE_WINDOW", final_exit)
 
-    def draw_menu_btn():  # Кнопка повернення
+    def draw_menu_btn():
         btn = turtle.Turtle();
         btn.hideturtle();
-        btn.speed(0);
+        btn.speed(0)
         btn.color("white");
-        btn.penup()
+        btn.penup();
         btn.goto(-440, 310);
         btn.begin_fill()
         for _ in range(2): btn.forward(80); btn.left(90); btn.forward(30); btn.left(90)
@@ -53,23 +82,34 @@ def start_game_process(num_players):  # Головна функція гри
 
     window.onclick(go_to_menu)
 
-    walls = []  # Список стін
+    walls = []
 
     def create_wall(x, y):
-        w = turtle.Turtle();
-        w.shape("square");
-        w.color("#b35900");
-        w.shapesize(1.2, 1.2);
-        w.penup();
-        w.goto(x, y);
+        w = turtle.Turtle()
+        w.shape("square")
+        # Новий вигляд: Неоновий кристал (колір контуру і заливки)
+        w.color("#00fbff", "#00008b")
+        w.shapesize(1.3, 1.3)
+        w.penup()
+        w.goto(x, y)
         walls.append(w)
 
-    def build_maze():  # Створення лабіринту
-        for x in [-300, 0, 300]:
-            for y in range(-250, 251, 40): create_wall(x, y)
-        for y in [-150, 150]:
-            for x in range(-400, 401, 40):
-                if abs(x) > 50: create_wall(x, y)
+    def build_maze():
+        # Список точок, де з'являються танки (спавни)
+        spawns = [(-400, 300), (400, -300), (400, 300), (-400, -300), (0, 320), (0, -320)]
+
+        # Генеруємо стіни по сітці
+        for x in range(-360, 361, 60):
+            for y in range(-280, 281, 60):
+                # Перевіряємо, щоб стіна не закрила танк на старті
+                safe = True
+                for sx, sy in spawns:
+                    if abs(x - sx) < 100 and abs(y - sy) < 100:
+                        safe = False
+
+                # 25% шанс появи стіни в цій клітинці
+                if safe and random.random() < 0.25:
+                    create_wall(x, y)
 
     p_configs = [
         ("blue", "w", "s", "a", "d", "space", (-400, 300), 0),
@@ -82,9 +122,9 @@ def start_game_process(num_players):  # Головна функція гри
 
     players, bullets = [], []
     scores = [0] * num_players
-    scoreboard = turtle.Turtle()
+    scoreboard = turtle.Turtle();
     scoreboard.hideturtle();
-    scoreboard.penup();
+    scoreboard.penup()
     scoreboard.color("white");
     scoreboard.goto(0, 310)
 
@@ -94,7 +134,7 @@ def start_game_process(num_players):  # Головна функція гри
             scoreboard.write(f"Синій: {scores[0]} | Червоний: {scores[1]}", align="center", font=("Arial", 18, "bold"))
 
     for i in range(num_players):
-        conf = p_configs[i];
+        conf = p_configs[i]
         t = turtle.Turtle();
         t.shape("turtle");
         t.color(conf[0]);
@@ -106,24 +146,19 @@ def start_game_process(num_players):  # Головна функція гри
         b = turtle.Turtle();
         b.hideturtle();
         b.penup();
-        b.shape("circle");
+        b.shape("circle")
         b.shapesize(0.3);
         b.color("white");
         b.state = "ready"
         players.append(t);
         bullets.append(b)
 
-    def reset_positions():
-        for i in range(num_players):
-            if players[i].active: players[i].goto(p_configs[i][6]); players[i].setheading(p_configs[i][7])
-        update_scores()
-
     def can_move(t, dist):
         t.forward(dist)
         nx, ny = t.xcor(), t.ycor()
         if abs(nx) > 435 or abs(ny) > 335: t.backward(dist); return False
         for w in walls:
-            if t.distance(w) < 26: t.backward(dist); return False
+            if t.distance(w) < 28: t.backward(dist); return False
         t.backward(dist);
         return True
 
@@ -138,6 +173,7 @@ def start_game_process(num_players):  # Головна функція гри
 
         def fire():
             if b.state == "ready" and t.active:
+                if shoot_fx: shoot_fx.play()
                 b.state = "fire";
                 b.goto(t.pos());
                 b.setheading(t.heading());
@@ -145,8 +181,8 @@ def start_game_process(num_players):  # Головна функція гри
 
         window.onkey(fire, conf[5])
 
-    window.listen();
-    build_maze();
+    window.listen()
+    build_maze()
     update_scores()
     for i in range(num_players): move_setup(i)
 
@@ -164,40 +200,43 @@ def start_game_process(num_players):  # Головна функція гри
                         b.forward(15)
                         for j in range(num_players):
                             if i != j and players[j].active and b.distance(players[j]) < 22:
+                                if explosion_fx: explosion_fx.play()
                                 b.state = "ready";
                                 b.hideturtle()
                                 if num_players == 2:
                                     scores[i] += 1
                                     if scores[i] < 3:
-                                        reset_positions()
+                                        for k in range(num_players):
+                                            if players[k].active: players[k].goto(p_configs[k][6])
+                                        update_scores()
                                     else:
                                         players[j].active = False; winner_color = t.name
                                 else:
-                                    players[j].active = False; players[j].hideturtle()
+                                    players[j].active = False;
+                                    players[j].hideturtle()
 
-                        for w in walls[:]:  # Перевірка стін
+                        for w in walls[:]:
                             if b.distance(w) < 20:
                                 b.state = "ready";
                                 b.hideturtle()
-                                if settings["destructible_walls"]:  # ЯКЩО УКЛЮЧЕНО РУЙНУВАННЯ
-                                    w.hideturtle();
-                                    walls.remove(w)  # Видаляємо стіну
+                                if settings["destructible_walls"]: w.hideturtle(); walls.remove(w)
                         if abs(b.xcor()) > 445 or abs(b.ycor()) > 345: b.state = "ready"; b.hideturtle()
 
             if (num_players > 2 and alive_count <= 1) or (num_players == 2 and (scores[0] == 3 or scores[1] == 3)):
-                winner_color = players[last_idx].name;
+                if alive_count > 0: winner_color = players[last_idx].name
                 break
             time.sleep(0.01)
         except:
             final_exit()
 
     if winner_color and game_running:
+        if victory_fx: victory_fx.play()
         window.clear();
         window.bgcolor(winner_color);
         draw_menu_btn()
         m = turtle.Turtle();
         m.hideturtle();
-        m.color("white");
+        m.color("white")
         m.write(f"ПЕРЕМІГ {winner_color.upper()}!", align="center", font=("Arial", 40, "bold"))
         while game_running:
             try:
@@ -208,25 +247,32 @@ def start_game_process(num_players):  # Головна функція гри
     main()
 
 
-def show_settings():  # Вікно налаштувань
+# --- ФУНКЦІЇ МЕНЮ (Pygame) ---
+def draw_bg_pygame(screen):
+    try:
+        bg = pygame.image.load(BACKGROUND_IMAGE)
+        bg = pygame.transform.scale(bg, (screen.get_width(), screen.get_height()))
+        screen.blit(bg, (0, 0))
+    except:
+        screen.fill((15, 15, 15))
+
+
+def show_settings():
     pygame.init()
     screen = pygame.display.set_mode((800, 600))
     font = pygame.font.SysFont("Arial", 30, bold=True)
     back_btn = pygame.Rect(50, 50, 150, 50)
     toggle_btn = pygame.Rect(300, 250, 200, 60)
-
     while True:
-        screen.fill((30, 30, 30))
+        draw_bg_pygame(screen)
         pygame.draw.rect(screen, (200, 200, 200), back_btn)
         screen.blit(font.render("НАЗАД", True, (0, 0, 0)), (70, 60))
-
+        label = font.render("РУЙНУВАННЯ СТІН:", True, (255, 255, 255))
+        screen.blit(label, (250, 200))
         status = "ТАК" if settings["destructible_walls"] else "НІ"
         color = (0, 255, 0) if settings["destructible_walls"] else (255, 0, 0)
-
-        screen.blit(font.render("РУЙНУВАННЯ СТІН:", True, (255, 255, 255)), (250, 200))
         pygame.draw.rect(screen, color, toggle_btn)
         screen.blit(font.render(status, True, (0, 0, 0)), (360, 265))
-
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT: pygame.quit(); sys.exit()
             if ev.type == pygame.MOUSEBUTTONDOWN:
@@ -235,17 +281,14 @@ def show_settings():  # Вікно налаштувань
         pygame.display.flip()
 
 
-def show_shop():  # Вікно магазину
+def show_shop():
     pygame.init()
     screen = pygame.display.set_mode((800, 600))
-    font = pygame.font.SysFont("Arial", 40, bold=True)
     back_btn = pygame.Rect(50, 50, 150, 50)
-
     while True:
-        screen.fill((10, 10, 25))
+        draw_bg_pygame(screen)
         pygame.draw.rect(screen, (200, 200, 200), back_btn)
         screen.blit(pygame.font.SysFont("Arial", 25).render("НАЗАД", True, (0, 0, 0)), (75, 60))
-        screen.blit(font.render("МАГАЗИН ПОКИ ПУСТИЙ", True, (255, 255, 0)), (150, 250))
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT: pygame.quit(); sys.exit()
             if ev.type == pygame.MOUSEBUTTONDOWN:
@@ -264,9 +307,8 @@ def start_menu():
         (pygame.Rect(275, 310, 250, 50), "МАГАЗИН", "SHOP"),
         (pygame.Rect(275, 380, 250, 50), "НАЛАШТУВАННЯ", "SETS")
     ]
-
     while True:
-        screen.fill((15, 15, 15))
+        draw_bg_pygame(screen)
         for br, txt, val in btns:
             pygame.draw.rect(screen, (255, 255, 255), br, 2)
             screen.blit(font.render(txt, True, (255, 255, 255)), (br.x + 20, br.y + 12))
@@ -293,4 +335,5 @@ def main():
             show_settings()
 
 
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    main()
